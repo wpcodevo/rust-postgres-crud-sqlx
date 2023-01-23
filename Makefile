@@ -10,6 +10,7 @@ start-server:
 install:
 	cargo add actix-web
 	cargo add actix-cors
+	cargo add serde_json
 	cargo add serde --features derive
 	cargo add chrono --features serde
 	cargo add env_logger
