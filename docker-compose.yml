@@ -9,5 +9,12 @@ services:
       - progresDB:/data/postgres
     env_file:
       - ./.env
+  pgAdmin:
+    image: dpage/pgadmin4
+    container_name: pgAdmin
+    env_file:
+      - ./.env
+    ports:
+      - "5050:80"
 volumes:
   progresDB:
