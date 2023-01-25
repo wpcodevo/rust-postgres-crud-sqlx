@@ -85,13 +85,14 @@ async fn create_note_handler(
 }
 
 #[get("/notes/{id}")]
-async fn get_note_handler(path: web::Path<String>, data: web::Data<AppState>) -> impl Responder {
+async fn get_note_handler(
+    path: web::Path<uuid::Uuid>,
+    data: web::Data<AppState>,
+) -> impl Responder {
     let note_id = path.into_inner();
-    let note_id_uuid = uuid::Uuid::parse_str(note_id.as_str()).unwrap();
-    let query_result =
-        sqlx::query_as!(NoteModel, "SELECT * FROM notes WHERE id = $1", note_id_uuid)
-            .fetch_one(&data.db)
-            .await;
+    let query_result = sqlx::query_as!(NoteModel, "SELECT * FROM notes WHERE id = $1", note_id)
+        .fetch_one(&data.db)
+        .await;
 
     match query_result {
         Ok(note) => {
@@ -111,16 +112,14 @@ async fn get_note_handler(path: web::Path<String>, data: web::Data<AppState>) ->
 
 #[patch("/notes/{id}")]
 async fn edit_note_handler(
-    path: web::Path<String>,
+    path: web::Path<uuid::Uuid>,
     body: web::Json<UpdateNoteSchema>,
     data: web::Data<AppState>,
 ) -> impl Responder {
     let note_id = path.into_inner();
-    let note_id_uuid = uuid::Uuid::parse_str(note_id.as_str()).unwrap();
-    let query_result =
-        sqlx::query_as!(NoteModel, "SELECT * FROM notes WHERE id = $1", note_id_uuid)
-            .fetch_one(&data.db)
-            .await;
+    let query_result = sqlx::query_as!(NoteModel, "SELECT * FROM notes WHERE id = $1", note_id)
+        .fetch_one(&data.db)
+        .await;
 
     if query_result.is_err() {
         let message = format!("Note with ID: {} not found", note_id);
@@ -139,7 +138,7 @@ async fn edit_note_handler(
         body.category.to_owned().unwrap_or(note.category.unwrap()),
         body.published.unwrap_or(note.published.unwrap()),
         now,
-        note_id_uuid
+        note_id
     )
     .fetch_one(&data.db)
     .await
@@ -153,29 +152,32 @@ async fn edit_note_handler(
 
             return HttpResponse::Ok().json(note_response);
         }
-        Err(_) => {
-            let message = format!("Note with ID: {} not found", note_id);
-            return HttpResponse::NotFound()
-                .json(serde_json::json!({"status": "fail","message": message}));
+        Err(err) => {
+            let message = format!("Error: {:?}", err);
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"status": "error","message": message}));
         }
     }
 }
 
 #[delete("/notes/{id}")]
-async fn delete_note_handler(path: web::Path<String>, data: web::Data<AppState>) -> impl Responder {
+async fn delete_note_handler(
+    path: web::Path<uuid::Uuid>,
+    data: web::Data<AppState>,
+) -> impl Responder {
     let note_id = path.into_inner();
-    let note_id_uuid = uuid::Uuid::parse_str(note_id.as_str()).unwrap();
-    let query_result = sqlx::query!("DELETE FROM notes  WHERE id = $1", note_id_uuid)
+    let rows_affected = sqlx::query!("DELETE FROM notes  WHERE id = $1", note_id)
         .execute(&data.db)
-        .await;
+        .await
+        .unwrap()
+        .rows_affected();
 
-    match query_result {
-        Ok(_) => HttpResponse::NoContent().finish(),
-        Err(_) => {
-            let message = format!("Note with ID: {} not found", note_id);
-            HttpResponse::NotFound().json(json!({"status": "fail","message": message}))
-        }
+    if rows_affected == 0 {
+        let message = format!("Note with ID: {} not found", note_id);
+        return HttpResponse::NotFound().json(json!({"status": "fail","message": message}));
     }
+
+    HttpResponse::NoContent().finish()
 }
 
 pub fn config(conf: &mut web::ServiceConfig) {
